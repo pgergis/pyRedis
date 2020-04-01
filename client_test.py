@@ -36,8 +36,10 @@ async def tests():
         print("tests pass")
 
     except Exception as exc:
-        print("tests failed at", str(exc))
+        print("tests failed with exception:", str(exc))
         raise
 
 
+# TODO: test concurrency with multiple connected clients
+# TODO: use lower-level sockets/threading to allow fn calls in repl
 asyncio.run(tests(), debug=True)

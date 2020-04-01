@@ -6,7 +6,7 @@ from utils.protocol_handler import ProtocolHandler
 
 
 class LRUCache(OrderedDict):
-    def __init__(self, max_size=128, *args, **kwargs):
+    def __init__(self, max_size, *args, **kwargs):
         self.max_size = max_size
         super().__init__(*args, **kwargs)
 
@@ -22,10 +22,14 @@ class LRUCache(OrderedDict):
             self.popitem(last=False)
 
 class Server:
-    def __init__(self):
+    def __init__(self, max_store_size=128):
         self._server = None
         self._protocol = ProtocolHandler()
-        self._kv = LRUCache()
+
+        # TODO: Since keys can be dropped from a cache,
+        # handler should grab a lock on the cache before
+        # writing to it.
+        self._kv = LRUCache(max_store_size)
 
     @property
     def commands(self):
