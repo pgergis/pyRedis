@@ -1,14 +1,31 @@
 import asyncio
+from collections import OrderedDict
 
 from utils.exceptions import CommandError, Disconnect, Error
 from utils.protocol_handler import ProtocolHandler
 
 
+class LRUCache(OrderedDict):
+    def __init__(self, max_size=128, *args, **kwargs):
+        self.max_size = max_size
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, k):
+        v = super().__getitem__(k)
+        self.move_to_end(k)
+        return v
+
+    def __setitem__(self, k, v):
+        super().__setitem__(k, v)
+        self.move_to_end(k)
+        if len(self) > self.max_size:
+            self.popitem(last=False)
+
 class Server:
     def __init__(self):
         self._server = None
         self._protocol = ProtocolHandler()
-        self._kv = {}
+        self._kv = LRUCache()
 
     @property
     def commands(self):
