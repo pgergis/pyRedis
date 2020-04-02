@@ -19,7 +19,8 @@ class LRUCache(OrderedDict):
         super().__setitem__(k, v)
         self.move_to_end(k)
         if len(self) > self.max_size:
-            self.popitem(last=False)
+            del self[next(iter(self))]
+
 
 class Server:
     def __init__(self, max_store_size=128):
@@ -58,7 +59,7 @@ class Server:
             b"FLUSH": self._flush,
             b"MGET": self._mget,
             b"MSET": self._mset,
-            b"GETALL": lambda: self._kv,
+            b"GETALL": lambda: {**self._kv},
         }
 
     def _get(self, key):
@@ -86,7 +87,7 @@ class Server:
         data = zip(items[::2], items[1::2])
         for k, v in data:
             self._kv[k] = v
-        return len(items)//2
+        return len(items) // 2
 
     def get_response(self, data):
         # TODO: unpack data sent by client, execute command, and return value
@@ -105,6 +106,8 @@ class Server:
         return self._get_commands()[command](*data[1:])
 
     async def run(self, host="127.0.0.1", port=31337):
-        self._server = await asyncio.start_server(self.connection_handler, host=host, port=port)
+        self._server = await asyncio.start_server(
+            self.connection_handler, host=host, port=port
+        )
         async with self._server as server:
             await server.serve_forever()

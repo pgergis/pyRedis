@@ -31,11 +31,11 @@ class ProtocolHandler:
 
     async def _handle_simple_string(self, stream_reader: StreamReader):
         n = await stream_reader.readline()
-        return n.rstrip(b'\r\n')
+        return n.rstrip(b"\r\n")
 
     async def _handle_error(self, stream_reader: StreamReader):
         n = await stream_reader.readline()
-        return Error(n.rstrip(b'\r\n'))
+        return Error(n.rstrip(b"\r\n"))
 
     async def _handle_integer(self, stream_reader: StreamReader):
         return int(await stream_reader.readline())
@@ -54,7 +54,9 @@ class ProtocolHandler:
 
     async def _handle_dict(self, stream_reader: StreamReader):
         num_items = int(await stream_reader.readline())
-        elements = [await self.handle_request(stream_reader) for _ in range(num_items * 2)]
+        elements = [
+            await self.handle_request(stream_reader) for _ in range(num_items * 2)
+        ]
         return dict(zip(elements[::2], elements[1::2]))
 
     async def write_response(self, stream_writer: StreamWriter, data: dict):
@@ -70,21 +72,21 @@ class ProtocolHandler:
             data = data.encode("utf-8")
 
         if isinstance(data, bytes):
-            buf.write(b'$%d\r\n%s\r\n' % (len(data), data))
+            buf.write(b"$%d\r\n%s\r\n" % (len(data), data))
         elif isinstance(data, int):
-            buf.write(b':%d\r\n' % data)
+            buf.write(b":%d\r\n" % data)
         elif isinstance(data, Error):
-            buf.write(b'-%s\r\n' % data.message.encode("utf-8"))
+            buf.write(b"-%s\r\n" % data.message.encode("utf-8"))
         elif isinstance(data, (list, tuple)):
-            buf.write(b'*%d\r\n' % len(data))
+            buf.write(b"*%d\r\n" % len(data))
             for item in data:
                 self._write(buf, item)
         elif isinstance(data, dict):
-            buf.write(b'%%%d\r\n' % len(data))
+            buf.write(b"%%%d\r\n" % len(data))
             for key in data:
                 self._write(buf, key)
                 self._write(buf, data[key])
         elif data is None:
-            buf.write(b'$-1\r\n')
+            buf.write(b"$-1\r\n")
         else:
-            raise CommandError('unrecognized type: %s' % type(data))
+            raise CommandError("unrecognized type: %s" % type(data))
