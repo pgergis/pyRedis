@@ -32,14 +32,24 @@ class Server:
         self._serv = socket.create_server((host, port), backlog=5)
         self._protocol = ProtocolHandler()
 
-        # TODO: Since keys can be dropped from a cache,
-        # handler should grab a lock on the cache before
-        # writing to it.
         self._kv = LRUCache(max_store_size)
 
     @property
     def commands(self):
         return self._get_commands().keys()
+
+    def run(self):
+        threads = []
+        try:
+            while True:
+                conn, _ = self._serv.accept()
+                t = threading.Thread(target=self.handle_connection, args=(conn,))
+                t.start()
+                threads.append(t)
+
+        finally:
+            for t in threads:
+                t.join()
 
     def handle_connection(self, conn):
         f = conn.makefile("rwb")
@@ -50,12 +60,28 @@ class Server:
             except Disconnect:
                 break
 
-            try:
-                resp = self.get_response(data)
-            except CommandError as exc:
-                resp = Error(exc.args[0])
+            with lock:  # NOTE: hold lock while r/w cache for consistent response
+                try:
+                    resp = self.get_response(data)
+                except CommandError as exc:
+                    resp = Error(exc.args[0])
 
             self._protocol.write_response(f, resp)
+
+    def get_response(self, data):
+        if not isinstance(data, list):
+            try:
+                data = data.split()
+            except Exception:
+                raise CommandError("request must be a list or a simple string")
+
+        if not data:
+            raise CommandError("missing command")
+
+        command = data[0].upper()
+        if command not in self.commands:
+            raise CommandError(f"unrecognized command: {command}")
+        return self._get_commands()[command](*data[1:])
 
     def _get_commands(self):
         return {
@@ -94,31 +120,3 @@ class Server:
         for k, v in data:
             self._kv[k] = v
         return len(items) // 2
-
-    def get_response(self, data):
-        if not isinstance(data, list):
-            try:
-                data = data.split()
-            except Exception:
-                raise CommandError("request must be a list or a simple string")
-
-        if not data:
-            raise CommandError("missing command")
-
-        command = data[0].upper()
-        if command not in self.commands:
-            raise CommandError(f"unrecognized command: {command}")
-        return self._get_commands()[command](*data[1:])
-
-    def run(self):
-        threads = []
-        try:
-            while True:
-                conn, _ = self._serv.accept()
-                t = threading.Thread(target=self.handle_connection, args=(conn,))
-                t.start()
-                threads.append(t)
-
-        finally:
-            for t in threads:
-                t.join()

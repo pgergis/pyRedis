@@ -50,9 +50,7 @@ class ProtocolHandler:
 
     def _handle_dict(self, reader):
         num_items = int(reader.readline())
-        elements = [
-            self.handle_request(reader) for _ in range(num_items * 2)
-        ]
+        elements = [self.handle_request(reader) for _ in range(num_items * 2)]
         return dict(zip(elements[::2], elements[1::2]))
 
     def write_response(self, writer, data: dict):
