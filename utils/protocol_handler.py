@@ -1,5 +1,3 @@
-from asyncio import StreamReader, StreamWriter
-from asyncio.exceptions import IncompleteReadError
 from io import BytesIO
 
 from .exceptions import CommandError, Disconnect, Error
@@ -16,56 +14,54 @@ class ProtocolHandler:
             b"%": self._handle_dict,
         }
 
-    async def handle_request(self, stream_reader: StreamReader):
+    def handle_request(self, reader):
         # parse a request from a client
-        try:
-            first_byte = await stream_reader.readexactly(1)
-
-        except IncompleteReadError:
+        first_byte = reader.read(1)
+        if not first_byte:
             raise Disconnect()
 
         try:
-            return await self._handlers[first_byte](stream_reader)
+            return self._handlers[first_byte](reader)
         except KeyError:
             raise CommandError("bad request")
 
-    async def _handle_simple_string(self, stream_reader: StreamReader):
-        n = await stream_reader.readline()
+    def _handle_simple_string(self, reader):
+        n = reader.readline()
         return n.rstrip(b"\r\n")
 
-    async def _handle_error(self, stream_reader: StreamReader):
-        n = await stream_reader.readline()
+    def _handle_error(self, reader):
+        n = reader.readline()
         return Error(n.rstrip(b"\r\n"))
 
-    async def _handle_integer(self, stream_reader: StreamReader):
-        return int(await stream_reader.readline())
+    def _handle_integer(self, reader):
+        return int(reader.readline())
 
-    async def _handle_string(self, stream_reader: StreamReader):
-        length = int(await stream_reader.readline())
+    def _handle_string(self, reader):
+        length = int(reader.readline())
         if length == -1:  # protocol's special case for NULL
             return None
         length += 2  # include the trailing \r\n in count
-        resp = await stream_reader.readexactly(length)
+        resp = reader.read(length)
         return resp[:-2]
 
-    async def _handle_array(self, stream_reader: StreamReader):
-        num_elements = int(await stream_reader.readline())
-        return [await self.handle_request(stream_reader) for _ in range(num_elements)]
+    def _handle_array(self, reader):
+        num_elements = int(reader.readline())
+        return [self.handle_request(reader) for _ in range(num_elements)]
 
-    async def _handle_dict(self, stream_reader: StreamReader):
-        num_items = int(await stream_reader.readline())
+    def _handle_dict(self, reader):
+        num_items = int(reader.readline())
         elements = [
-            await self.handle_request(stream_reader) for _ in range(num_items * 2)
+            self.handle_request(reader) for _ in range(num_items * 2)
         ]
         return dict(zip(elements[::2], elements[1::2]))
 
-    async def write_response(self, stream_writer: StreamWriter, data: dict):
+    def write_response(self, writer, data: dict):
         # serialize the response data and send to client
         buf = BytesIO()
         self._write(buf, data)
         buf.seek(0)
-        stream_writer.write(buf.getvalue())
-        await stream_writer.drain()
+        writer.write(buf.getvalue())
+        writer.flush()
 
     def _write(self, buf: BytesIO, data):
         if isinstance(data, str):

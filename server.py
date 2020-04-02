@@ -1,8 +1,11 @@
-import asyncio
+import socket
+import threading
 from collections import OrderedDict
 
 from utils.exceptions import CommandError, Disconnect, Error
 from utils.protocol_handler import ProtocolHandler
+
+lock = threading.Lock()
 
 
 class LRUCache(OrderedDict):
@@ -23,8 +26,10 @@ class LRUCache(OrderedDict):
 
 
 class Server:
-    def __init__(self, max_store_size=128):
-        self._server = None
+    def __init__(
+        self, host="127.0.0.1", port=31337, max_connections=5, max_store_size=128
+    ):
+        self._serv = socket.create_server((host, port), backlog=5)
         self._protocol = ProtocolHandler()
 
         # TODO: Since keys can be dropped from a cache,
@@ -36,11 +41,12 @@ class Server:
     def commands(self):
         return self._get_commands().keys()
 
-    async def connection_handler(self, reader, writer):
+    def handle_connection(self, conn):
+        f = conn.makefile("rwb")
         # process client requests until client disconnects
         while True:
             try:
-                data = await self._protocol.handle_request(reader)
+                data = self._protocol.handle_request(f)
             except Disconnect:
                 break
 
@@ -49,7 +55,7 @@ class Server:
             except CommandError as exc:
                 resp = Error(exc.args[0])
 
-            await self._protocol.write_response(writer, resp)
+            self._protocol.write_response(f, resp)
 
     def _get_commands(self):
         return {
@@ -90,7 +96,6 @@ class Server:
         return len(items) // 2
 
     def get_response(self, data):
-        # TODO: unpack data sent by client, execute command, and return value
         if not isinstance(data, list):
             try:
                 data = data.split()
@@ -105,9 +110,15 @@ class Server:
             raise CommandError(f"unrecognized command: {command}")
         return self._get_commands()[command](*data[1:])
 
-    async def run(self, host="127.0.0.1", port=31337):
-        self._server = await asyncio.start_server(
-            self.connection_handler, host=host, port=port
-        )
-        async with self._server as server:
-            await server.serve_forever()
+    def run(self):
+        threads = []
+        try:
+            while True:
+                conn, _ = self._serv.accept()
+                t = threading.Thread(target=self.handle_connection, args=(conn,))
+                t.start()
+                threads.append(t)
+
+        finally:
+            for t in threads:
+                t.join()
